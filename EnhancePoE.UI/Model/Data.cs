@@ -76,14 +76,14 @@ namespace EnhancePoE.UI.Model
 
             // TODO: crashes here after some time
             foreach (var s in StashTabList.StashTabs)
-                foreach (var i in (List<Item>)Utility.GetPropertyValue(s, listName))
-                    if (set.GetNextItemClass() == i.ItemType || !honorOrder && set.IsValidItem(i))
-                        if (set.GetItemDistance(i) < minDistance)
-                        {
-                            //Trace.WriteLine(minDistance, "minDistance");
-                            minDistance = set.GetItemDistance(i);
-                            minItem = i;
-                        }
+            foreach (var i in (List<Item>)Utility.GetPropertyValue(s, listName))
+                if (set.GetNextItemClass() == i.ItemType || !honorOrder && set.IsValidItem(i))
+                    if (set.GetItemDistance(i) < minDistance)
+                    {
+                        //Trace.WriteLine(minDistance, "minDistance");
+                        minDistance = set.GetItemDistance(i);
+                        minItem = i;
+                    }
 
             if (minItem != null)
             {
@@ -102,21 +102,20 @@ namespace EnhancePoE.UI.Model
                 {
                     nextItemType = "OneHandWeapons";
                     foreach (var s in StashTabList.StashTabs)
-                        foreach (var i in (List<Item>)Utility.GetPropertyValue(s, listName))
-                            if (nextItemType == i.ItemType)
-                                if (set.GetItemDistance(i) < minDistance)
-                                {
-                                    //Trace.WriteLine(minDistance, "minDistance");
-                                    minDistance = set.GetItemDistance(i);
-                                    minItem = i;
-                                }
+                    foreach (var i in (List<Item>)Utility.GetPropertyValue(s, listName))
+                        if (nextItemType == i.ItemType)
+                            if (set.GetItemDistance(i) < minDistance)
+                            {
+                                //Trace.WriteLine(minDistance, "minDistance");
+                                minDistance = set.GetItemDistance(i);
+                                minItem = i;
+                            }
 
                     if (minItem != null)
                     {
                         set.AddItem(minItem);
                         var tab = GetStashTabFromItem(minItem);
                         ((List<Item>)Utility.GetPropertyValue(tab, listName)).Remove(minItem);
-                        //tab.ItemListChaos.Remove(minItem);
                         return true;
                     }
                 }
@@ -139,16 +138,19 @@ namespace EnhancePoE.UI.Model
                             continue;
 
                     if (!AddItemToItemSet(i))
+                        // couldn't add a regal item. Try chaos item if filling with chaos is allowed
+                        // fill with chaos == fill greedy == DO NOT PRESERVE LOW LEVEL ITEMS setting
                         if (Settings.Default.FillWithChaos && !Settings.Default.RegalRecipe)
                             AddItemToItemSet(i, true);
                 }
 
                 /* At this point in time the following conditions may be met, exclusively
-                 * 1.) We obtained a full set and it contains one chaos item
-                 * 1.1) We obtained a full set and it contains multiple chaos items (only if filling with chaos items is allowed)
-                 * 2.) We obtained a full set without a chaos item -> We aren't lacking a regal item in this set but we don't have enough chaos items. 
-                 * 3.) We couldn't obtain a full set. That means that at least one item slot is missing. We need to check which of the remaining slots we can still fill. We could still be missing a chaos item.
+                 * Scenario 1.) We obtained a full set and it contains one chaos item
+                 * Scenario 1.1) We obtained a full set and it contains multiple chaos items (only if filling with chaos items is allowed)
+                 * Scenario 2.) We obtained a full set without a chaos item -> We aren't lacking a regal item in this set but we don't have enough chaos items. 
+                 * Scenario 3.) We couldn't obtain a full set. That means that at least one item slot is missing. We need to check which of the remaining slots we can still fill. We could still be missing a chaos item.
                  */
+                
                 if (i.EmptyItemSlots.Count == 0 && (i.SetCanProduceChaos || Settings.Default.RegalRecipe))
                     // Set full, continue
                     continue;
@@ -165,6 +167,7 @@ namespace EnhancePoE.UI.Model
 
                         if (!AddItemToItemSet(i, false, false))
                             // couldn't add a regal item. Try chaos item if filling with chaos is allowed
+                            // fill with chaos == fill greedy == DO NOT PRESERVE LOW LEVEL ITEMS setting
                             if (Settings.Default.FillWithChaos && !Settings.Default.RegalRecipe)
                                 AddItemToItemSet(i, true, false);
                     }
@@ -250,7 +253,7 @@ namespace EnhancePoE.UI.Model
                 {
                     PreviousActiveItems = new ActiveItemTypes(ActiveItems);
                 }
-                
+
                 // calculate target amount if user has 0 set in it
                 // (e.g. 2 quad tabs queried w 0 set threshold = 24 set threshold)
                 // else just stick to the default amount (their defined in settings)
@@ -271,7 +274,7 @@ namespace EnhancePoE.UI.Model
 
                 // generate {SetThreshold} empty sets to be filled
                 GenerateItemSetList();
-                
+
                 // proceed to fill those newly created empty sets
                 FillItemSets();
 
@@ -291,7 +294,10 @@ namespace EnhancePoE.UI.Model
                         // never true cause fullsets < settargetamount when missingChaos @ikogan
                         fullSets++;
 
-                        if (!set.SetCanProduceChaos && !Settings.Default.RegalRecipe) missingGearPieceForChaosRecipe = true;
+                        if (!set.SetCanProduceChaos && !Settings.Default.RegalRecipe)
+                        {
+                            missingGearPieceForChaosRecipe = true;
+                        }
                     }
                     else
                     {
@@ -299,19 +305,24 @@ namespace EnhancePoE.UI.Model
                         foreach (var itemClass in set.EmptyItemSlots) missingItemClasses.Add(itemClass);
                     }
                 }
-                
+
                 CFilterGenerationManager filterManager = new CFilterGenerationManager();
-                
+
                 // i need to pass in the missingGearPieceForChaosRecipe
                 ActiveItems = await filterManager.GenerateSectionsAndUpdateFilterAsync(missingItemClasses, missingGearPieceForChaosRecipe);
 
                 //Trace.WriteLine(fullSets, "full sets");
-                chaosRecipeEnhancer.Dispatcher.Invoke(() => { chaosRecipeEnhancer.FullSetsText = fullSets.ToString(); });
+                chaosRecipeEnhancer.Dispatcher.Invoke(() =>
+                {
+                    chaosRecipeEnhancer.FullSetsText = fullSets.ToString();
+                });
 
                 // invoke chaos missing
                 if (missingGearPieceForChaosRecipe && !Settings.Default.RegalRecipe)
                 {
-                    chaosRecipeEnhancer.WarningMessage = "Need lower level items!";
+                    var missingLowLevelItemCount = SetTargetAmount - fullSets;
+
+                    chaosRecipeEnhancer.WarningMessage = $"{missingLowLevelItemCount} more lower item level pieces needed";
                     chaosRecipeEnhancer.ShadowOpacity = 1;
                     chaosRecipeEnhancer.WarningMessageVisibility = Visibility.Visible;
                 }
@@ -325,7 +336,7 @@ namespace EnhancePoE.UI.Model
                         || ItemSetHunter.EmptyItemSlots.Count == 0
                         || ItemSetRedeemer.EmptyItemSlots.Count == 0)
                     {
-                        chaosRecipeEnhancer.WarningMessage = "Exalted Recipe ready!";
+                        chaosRecipeEnhancer.WarningMessage = "Exalted Recipe ready";
                         chaosRecipeEnhancer.ShadowOpacity = 1;
                         chaosRecipeEnhancer.WarningMessageVisibility = Visibility.Visible;
                     }
@@ -333,7 +344,7 @@ namespace EnhancePoE.UI.Model
                 // invoke set full
                 if (fullSets == SetTargetAmount && !missingGearPieceForChaosRecipe)
                 {
-                    chaosRecipeEnhancer.WarningMessage = "Sets full!";
+                    chaosRecipeEnhancer.WarningMessage = "Sets full";
                     chaosRecipeEnhancer.ShadowOpacity = 1;
                     chaosRecipeEnhancer.WarningMessageVisibility = Visibility.Visible;
                 }
@@ -510,12 +521,14 @@ namespace EnhancePoE.UI.Model
                     }
                     else
                     {
-                        if (ItemSetListHighlight.Count > 0) PlayerSet.Dispatcher.Invoke(() => { PlayNotificationSoundSetPicked(); });
+                        if (ItemSetListHighlight.Count > 0)
+                            PlayerSet.Dispatcher.Invoke(() => { PlayNotificationSoundSetPicked(); });
                     }
 
                     // next item if itemlist not empty
                     if (ItemSetListHighlight.Count > 0)
-                        if (ItemSetListHighlight[0].ItemList.Count > 0 && ItemSetListHighlight[0].EmptyItemSlots.Count == 0)
+                        if (ItemSetListHighlight[0].ItemList.Count > 0 &&
+                            ItemSetListHighlight[0].EmptyItemSlots.Count == 0)
                         {
                             var highlightItem = ItemSetListHighlight[0].ItemList[0];
                             var currentTab = GetStashTabFromItem(highlightItem);
@@ -523,16 +536,13 @@ namespace EnhancePoE.UI.Model
                             {
                                 currentTab.ActivateItemCells(highlightItem);
                                 if (Settings.Default.ColorStash != "")
-                                    currentTab.TabHeaderColor = new SolidColorBrush((Color)ColorConverter.ConvertFromString(Settings.Default.ColorStash));
+                                    currentTab.TabHeaderColor = new SolidColorBrush(
+                                        (Color)ColorConverter.ConvertFromString(Settings.Default.ColorStash));
                                 else
                                     currentTab.TabHeaderColor = Brushes.Red;
 
                                 ItemSetListHighlight[0].ItemList.RemoveAt(0);
                             }
-                            //check for full sets
-                            //if (ItemSetListHighlight[0].ItemList.Count <= 0)
-                            //{
-                            //}
                         }
                 }
                 else if (Settings.Default.HighlightMode == 1)
@@ -542,8 +552,8 @@ namespace EnhancePoE.UI.Model
                     {
                         Trace.WriteLine(ItemSetListHighlight[0].ItemList.Count, "item list count");
                         Trace.WriteLine(ItemSetListHighlight.Count, "itemset list ocunt");
-                        // check for full sets
 
+                        // check for full sets
                         if (ItemSetListHighlight[0].EmptyItemSlots.Count == 0)
                         {
                             if (cell != null)
@@ -557,16 +567,15 @@ namespace EnhancePoE.UI.Model
                                     ItemSetListHighlight[0].ItemList.Remove(highlightItem);
                                 }
                             }
-                            //Trace.WriteLine("IS HERE IS HERE IS HERE");
 
                             foreach (var i in ItemSetListHighlight[0].ItemList)
                             {
-                                //currentTab.ActivateItemCells(i);
                                 var currTab = GetStashTabFromItem(i);
                                 currTab.ActivateItemCells(i);
-                                //currTab.ShowNumbersOnActiveCells();
                                 if (Settings.Default.ColorStash != "")
-                                    currTab.TabHeaderColor = new SolidColorBrush((Color)ColorConverter.ConvertFromString(Settings.Default.ColorStash));
+                                    currTab.TabHeaderColor =
+                                        new SolidColorBrush(
+                                            (Color)ColorConverter.ConvertFromString(Settings.Default.ColorStash));
                                 else
                                     currTab.TabHeaderColor = Brushes.Red;
                             }
@@ -581,7 +590,6 @@ namespace EnhancePoE.UI.Model
 
                             if (ItemSetListHighlight[0].ItemList.Count == 0)
                             {
-                                //Trace.WriteLine("itemsetlist gets removes0");
                                 ItemSetListHighlight.RemoveAt(0);
                                 // activate next set
                                 ActivateNextCell(true, null);
@@ -613,18 +621,15 @@ namespace EnhancePoE.UI.Model
 
         public static void PrepareSelling()
         {
-            //ClearAllItemOrderLists();
             ItemSetListHighlight.Clear();
             if (ApiAdapter.IsFetching) return;
 
             if (ItemSetList == null) return;
 
-            //Trace.WriteLine(StashTabList.StashTabs.Count, "stashtab count");
             foreach (var s in StashTabList.StashTabs) s.PrepareOverlayList();
 
             foreach (var itemSet in ItemSetList)
                 itemSet.OrderItems();
-            //GlobalItemOrderList.AddRange(itemSet.ItemList);
 
             if (Settings.Default.ExaltedRecipe)
             {
@@ -677,7 +682,6 @@ namespace EnhancePoE.UI.Model
                     });
             }
 
-            //ItemSetListHighlight = new List<ItemSet>(ItemSetList);
             foreach (var set in ItemSetList)
                 if (set.SetCanProduceChaos || Settings.Default.RegalRecipe)
                     ItemSetListHighlight.Add(new ItemSet
@@ -686,17 +690,5 @@ namespace EnhancePoE.UI.Model
                         EmptyItemSlots = new List<string>(set.EmptyItemSlots)
                     });
         }
-    }
-
-    public class ItemTypeAmounts
-    {
-        public int Gloves { get; set; } = 0;
-        public int Helmets { get; set; } = 0;
-        public int Boots { get; set; } = 0;
-        public int Chests { get; set; } = 0;
-        public int Weapons { get; set; } = 0;
-        public int Amulets { get; set; } = 0;
-        public int Rings { get; set; } = 0;
-        public int Belts { get; set; } = 0;
     }
 }
